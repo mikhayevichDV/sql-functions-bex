@@ -96,8 +96,8 @@ BEGIN
             ) * 100
         ) BETWEEN p_scoring_value_from AND p_scoring_value_to
     AND jobs.title ILIKE p_title_start || '%'
-    OFFSET p_offset
     ORDER BY jobs.create_time DESC
+    OFFSET p_offset
     LIMIT 50;
 END;
 $$ LANGUAGE plpgsql;
