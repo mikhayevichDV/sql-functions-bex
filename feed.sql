@@ -15,7 +15,7 @@ RETURNS TABLE (
     hourly_budget_min DOUBLE PRECISION,
     hourly_budget_max DOUBLE PRECISION,
     budget_amount DOUBLE PRECISION,
-    created_at TIMESTAMP WITH TIME ZONE,
+    publish_time TIMESTAMP WITH TIME ZONE,
     best_vector_similarity DOUBLE PRECISION
 ) AS $$
 BEGIN
@@ -28,7 +28,7 @@ BEGIN
         jobs.hourly_budget_min, 
         jobs.hourly_budget_max, 
         jobs.budget_amount, 
-        jobs.created_at, 
+        jobs.publish_time, 
         FLOOR(
             (0.5 * (SELECT MAX(jobs.vector <=> offers.vector) 
                     FROM offers 
@@ -96,7 +96,7 @@ BEGIN
             ) * 100
         ) BETWEEN p_scoring_value_from AND p_scoring_value_to
     AND jobs.title ILIKE p_title_start || '%'
-    ORDER BY jobs.create_time DESC
+    ORDER BY jobs.publish_time DESC
     OFFSET p_offset
     LIMIT 50;
 END;
