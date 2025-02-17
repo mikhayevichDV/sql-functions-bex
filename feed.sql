@@ -5,17 +5,18 @@ CREATE OR REPLACE FUNCTION feedt(
   p_end_date TIMESTAMP DEFAULT '9999-12-31',
   p_scoring_value_from DOUBLE PRECISION DEFAULT 0,
   p_scoring_value_to DOUBLE PRECISION DEFAULT 100,
-  p_title_start TEXT DEFAULT ''
+  p_title_start TEXT DEFAULT '',
+  p_offer_ids UUID[] DEFAULT NULL
 )
 RETURNS TABLE (
     id UUID,
     title CHARACTER VARYING,
     job_type jobs_job_type_enum,
-    create_time TIMESTAMP,
+    publish_time TIMESTAMP,
     hourly_budget_min DOUBLE PRECISION,
     hourly_budget_max DOUBLE PRECISION,
     budget_amount DOUBLE PRECISION,
-    publish_time TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE,
     best_vector_similarity DOUBLE PRECISION
 ) AS $$
 BEGIN
@@ -24,15 +25,16 @@ BEGIN
         jobs.id, 
         jobs.title, 
         jobs.job_type, 
-        jobs.create_time, 
+        jobs.publish_time, 
         jobs.hourly_budget_min, 
         jobs.hourly_budget_max, 
         jobs.budget_amount, 
-        jobs.publish_time, 
+        jobs.created_at, 
         FLOOR(
             (0.5 * (SELECT MAX(jobs.vector <=> offers.vector) 
                     FROM offers 
-                    WHERE offers.partner_id = p_id) +
+                    WHERE offers.partner_id = p_id
+                      AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))) +
              0.3 * (SELECT COALESCE(0.5 * scores[1] + 0.3 * scores[2] + 0.2 * scores[3], 0) 
                     FROM (
                         SELECT ARRAY(
@@ -42,6 +44,7 @@ BEGIN
                                 SELECT profile_id 
                                 FROM offers 
                                 WHERE offers.partner_id = p_id 
+                                  AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))
                                 ORDER BY jobs.vector <=> offers.vector DESC 
                                 LIMIT 1
                             )
@@ -55,6 +58,7 @@ BEGIN
                         SELECT profile_id 
                         FROM offers 
                         WHERE offers.partner_id = p_id 
+                          AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))
                         ORDER BY jobs.vector <=> offers.vector DESC 
                         LIMIT 1
                     )
@@ -62,11 +66,12 @@ BEGIN
             ) * 100
         ) AS best_vector_similarity
     FROM upwork.jobs
-    WHERE jobs.create_time BETWEEN p_start_date AND p_end_date
+    WHERE jobs.publish_time BETWEEN p_start_date AND p_end_date
     AND FLOOR(
             (0.5 * (SELECT MAX(jobs.vector <=> offers.vector) 
                     FROM offers 
-                    WHERE offers.partner_id = p_id) +
+                    WHERE offers.partner_id = p_id
+                      AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))) +
              0.3 * (SELECT COALESCE(0.5 * scores[1] + 0.3 * scores[2] + 0.2 * scores[3], 0) 
                     FROM (
                         SELECT ARRAY(
@@ -76,6 +81,7 @@ BEGIN
                                 SELECT profile_id 
                                 FROM offers 
                                 WHERE offers.partner_id = p_id 
+                                  AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))
                                 ORDER BY jobs.vector <=> offers.vector DESC 
                                 LIMIT 1
                             )
@@ -89,6 +95,7 @@ BEGIN
                         SELECT profile_id 
                         FROM offers 
                         WHERE offers.partner_id = p_id 
+                          AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))
                         ORDER BY jobs.vector <=> offers.vector DESC 
                         LIMIT 1
                     )
