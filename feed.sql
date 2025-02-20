@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION feedt(
+CREATE OR REPLACE FUNCTION feeds(
   p_id uuid,
   p_offset integer DEFAULT 0,
   p_start_date TIMESTAMP DEFAULT '1970-01-01',
@@ -102,9 +102,15 @@ BEGIN
                    )
             ) * 100
         ) BETWEEN p_scoring_value_from AND p_scoring_value_to
-    AND jobs.title ILIKE p_title_start || '%'
+    AND (
+  p_title_start = '' OR 
+  NOT EXISTS (
+    SELECT 1
+    FROM unnest(string_to_array(p_title_start, ' ')) AS word
+    WHERE jobs.title NOT ILIKE '%' || word || '%'
+  )
+)
     ORDER BY jobs.publish_time DESC
-    OFFSET p_offset
-    LIMIT 50;
+    OFFSET p_offset;
 END;
 $$ LANGUAGE plpgsql;
