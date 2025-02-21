@@ -11,6 +11,7 @@ CREATE OR REPLACE FUNCTION feeds(
 RETURNS TABLE (
     id UUID,
     title CHARACTER VARYING,
+    description CHARACTER VARYING,
     job_type jobs_job_type_enum,
     publish_time TIMESTAMP,
     hourly_budget_min DOUBLE PRECISION,
@@ -23,7 +24,8 @@ BEGIN
     RETURN QUERY
     SELECT 
         jobs.id, 
-        jobs.title, 
+        jobs.title,
+        jobs.description, 
         jobs.job_type, 
         jobs.publish_time, 
         jobs.hourly_budget_min, 
