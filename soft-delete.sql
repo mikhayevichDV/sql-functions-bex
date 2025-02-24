@@ -173,3 +173,95 @@ EXCEPTION WHEN OTHERS THEN
     RAISE;
 END;$function$
 ;
+
+
+
+
+
+ -- without cycles
+DECLARE
+    freelancer_updated INT := 0;
+    profiles_updated INT := 0;
+    portfolio_projects_updated INT := 0;
+    offers_updated INT := 0;
+    completed_projects_updated INT := 0;
+BEGIN
+    -- Check user email
+    IF user_email != auth.jwt() ->> 'email' THEN
+        RAISE EXCEPTION 'User email does not match current user';
+    END IF;
+
+    -- Update freelancer
+    UPDATE partner_freelancers
+    SET
+        deleted_at = NOW(),
+        deleted_by = user_email
+    WHERE id = target_id
+        AND deleted_at IS NULL;
+    GET DIAGNOSTICS freelancer_updated = ROW_COUNT;
+
+    -- If freelancer found and updated, update all related data
+    IF freelancer_updated > 0 THEN
+        WITH updated_profiles AS (
+            UPDATE partner_freelancer_profiles
+            SET
+                deleted_at = NOW(),
+                deleted_by = user_email
+            WHERE freelancer_id = target_id
+                AND deleted_at IS NULL
+            RETURNING id
+        ),
+        updated_portfolio_projects AS (
+            UPDATE upwork_freelancer_portfolio_projects
+            SET
+                deleted_at = NOW(),
+                deleted_by = user_email
+            WHERE profile_id IN (SELECT id FROM updated_profiles)
+                AND deleted_at IS NULL
+            RETURNING 1
+        ),
+        updated_offers AS (
+            UPDATE offers
+            SET
+                deleted_at = NOW(),
+                deleted_by = user_email
+            WHERE profile_id IN (SELECT id FROM updated_profiles)
+                AND deleted_at IS NULL
+            RETURNING 1
+        ),
+        updated_completed_projects AS (
+            UPDATE upwork_freelancer_completed_projects
+            SET
+                deleted_at = NOW(),
+                deleted_by = user_email
+            WHERE profile_id IN (SELECT id FROM updated_profiles)
+                AND deleted_at IS NULL
+            RETURNING 1
+        )
+        SELECT 
+            COUNT(*),
+            (SELECT COUNT(*) FROM updated_portfolio_projects),
+            (SELECT COUNT(*) FROM updated_offers),
+            (SELECT COUNT(*) FROM updated_completed_projects)
+        INTO 
+            profiles_updated,
+            portfolio_projects_updated,
+            offers_updated,
+            completed_projects_updated
+        FROM updated_profiles;
+    ELSE
+        RAISE EXCEPTION 'Freelancer not found or already deleted';
+    END IF;
+
+    RETURN jsonb_build_object(
+        'freelancer_updated', freelancer_updated > 0,
+        'profiles_updated', profiles_updated,
+        'portfolio_projects_updated', portfolio_projects_updated,
+        'offers_updated', offers_updated,
+        'completed_projects_updated', completed_projects_updated
+    );
+EXCEPTION 
+    WHEN OTHERS THEN
+        RAISE;
+END;
+
