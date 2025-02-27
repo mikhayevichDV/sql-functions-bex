@@ -1,8 +1,8 @@
 CREATE OR REPLACE FUNCTION feeds(
   p_id uuid,
   p_offset integer DEFAULT 0,
-  p_start_date TIMESTAMP DEFAULT '1970-01-01',
-  p_end_date TIMESTAMP DEFAULT '9999-12-31',
+  p_start_date TIMESTAMPTZ DEFAULT '1970-01-01',
+  p_end_date TIMESTAMPTZ DEFAULT '9999-12-31',
   p_scoring_value_from DOUBLE PRECISION DEFAULT 0,
   p_scoring_value_to DOUBLE PRECISION DEFAULT 100,
   p_title_start TEXT DEFAULT '',
@@ -13,7 +13,14 @@ RETURNS TABLE (
     title CHARACTER VARYING,
     description CHARACTER VARYING,
     job_type jobs_job_type_enum,
-    publish_time TIMESTAMP,
+    category CHARACTER VARYING,
+    project_length CHARACTER VARYING,
+    client_payment_verified boolean,
+    client_location CHARACTER VARYING,
+    hours_per_week CHARACTER VARYING,
+    experience_level int,
+    connect_price int,
+    publish_time TIMESTAMPTZ,
     hourly_budget_min DOUBLE PRECISION,
     hourly_budget_max DOUBLE PRECISION,
     budget_amount DOUBLE PRECISION,
@@ -26,7 +33,14 @@ BEGIN
         jobs.id, 
         jobs.title,
         jobs.description, 
-        jobs.job_type, 
+        jobs.job_type,
+        jobs.category,
+        jobs.project_length,
+        jobs.client_payment_verified,
+        jobs.client_location,
+        jobs.hours_per_week,
+        jobs.experience_level,
+        jobs.connect_price,
         jobs.publish_time, 
         jobs.hourly_budget_min, 
         jobs.hourly_budget_max, 
@@ -113,6 +127,7 @@ BEGIN
   )
 )
     ORDER BY jobs.publish_time DESC
+    limit 50
     OFFSET p_offset;
 END;
 $$ LANGUAGE plpgsql;
