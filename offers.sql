@@ -1,9 +1,12 @@
-CREATE OR REPLACE FUNCTION public.offert(
+CREATE OR REPLACE FUNCTION public.offers(
     job_id UUID,
     p_id UUID
 )
 RETURNS TABLE(
     id UUID,
+    offer_similarity DOUBLE PRECISION,
+    profile_similarity DOUBLE PRECISION,
+    portfolio_similarity DOUBLE PRECISION,
     total_score DOUBLE PRECISION
 ) 
 LANGUAGE plpgsql
@@ -12,14 +15,40 @@ BEGIN
     RETURN QUERY
     SELECT 
         o.id,
+        
+        (1 - (o.vector <=> j.vector)) AS offer_similarity,
+        
+        (SELECT 1 - (p.vector <=> j.vector)
+         FROM public.partner_freelancer_profiles p
+         WHERE p.id = o.profile_id) AS profile_similarity,
+        
+        COALESCE((
+            SELECT 
+                SUM(
+                    CASE 
+                        WHEN rank = 1 THEN score * 0.5
+                        WHEN rank = 2 THEN score * 0.3
+                        WHEN rank = 3 THEN score * 0.2
+                        ELSE 0
+                    END
+                )
+            FROM (
+                SELECT 
+                    1 - (ufpp.vector <=> j.vector) AS score,
+                    ROW_NUMBER() OVER (ORDER BY 1 - (ufpp.vector <=> j.vector) DESC) AS rank
+                FROM public.upwork_freelancer_portfolio_projects ufpp
+                WHERE ufpp.profile_id = o.profile_id
+                ORDER BY score DESC
+                LIMIT 3
+            ) AS ranked_scores
+        ), 0) AS portfolio_similarity,
+        
         FLOOR(
             (
                 (1 - (o.vector <=> j.vector)) * 0.5 + 
-                (
-                    SELECT 1 - (p.vector <=> j.vector)
-                    FROM public.partner_freelancer_profiles p
-                    WHERE p.id = o.profile_id
-                ) * 0.2 +
+                (SELECT 1 - (p.vector <=> j.vector)
+                 FROM public.partner_freelancer_profiles p
+                 WHERE p.id = o.profile_id) * 0.2 +
                 COALESCE((
                     SELECT 
                         SUM(

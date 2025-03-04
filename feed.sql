@@ -25,6 +25,9 @@ RETURNS TABLE (
     hourly_budget_max DOUBLE PRECISION,
     budget_amount DOUBLE PRECISION,
     created_at TIMESTAMP WITH TIME ZONE,
+    offer_similarity DOUBLE PRECISION,
+    portfolio_similarity DOUBLE PRECISION,
+    profile_similarity DOUBLE PRECISION,
     best_vector_similarity DOUBLE PRECISION
 ) AS $$
 BEGIN
@@ -46,36 +49,71 @@ BEGIN
         jobs.hourly_budget_max, 
         jobs.budget_amount, 
         jobs.created_at, 
+        
+        (SELECT MAX(1 - (jobs.vector <=> offers.vector)) 
+         FROM offers 
+         WHERE offers.partner_id = p_id
+           AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))) AS offer_similarity,
+        
+        (SELECT COALESCE(1 - (0.5 * scores[1] + 0.3 * scores[2] + 0.2 * scores[3]), 0) 
+         FROM (
+             SELECT ARRAY(
+                 SELECT (1 - (upwork_freelancer_portfolio_projects.vector <=> jobs.vector)) 
+                 FROM upwork_freelancer_portfolio_projects 
+                 WHERE upwork_freelancer_portfolio_projects.profile_id = (
+                     SELECT profile_id 
+                     FROM offers 
+                     WHERE offers.partner_id = p_id 
+                       AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))
+                     ORDER BY (1-(jobs.vector <=> offers.vector)) DESC 
+                     LIMIT 1
+                 )
+                 ORDER BY (1-(upwork_freelancer_portfolio_projects.vector <=> jobs.vector)) DESC 
+                 LIMIT 3
+             ) AS scores
+         ) subquery) AS portfolio_similarity,
+        
+        (SELECT 1 - (partner_freelancer_profiles.vector <=> jobs.vector) 
+         FROM partner_freelancer_profiles 
+         WHERE partner_freelancer_profiles.id = (
+             SELECT profile_id 
+             FROM offers 
+             WHERE offers.partner_id = p_id 
+               AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))
+             ORDER BY (1-(jobs.vector <=> offers.vector)) DESC 
+             LIMIT 1
+         )) AS profile_similarity,
+        
         FLOOR(
-            (0.5 * (SELECT MAX(jobs.vector <=> offers.vector) 
+            (0.5 * (SELECT MAX(1 - (jobs.vector <=> offers.vector)) 
                     FROM offers 
                     WHERE offers.partner_id = p_id
                       AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))) +
-             0.3 * (SELECT COALESCE(0.5 * scores[1] + 0.3 * scores[2] + 0.2 * scores[3], 0) 
+             0.3 * (SELECT COALESCE(1 - (0.5 * scores[1] + 0.3 * scores[2] + 0.2 * scores[3]), 0) 
                     FROM (
                         SELECT ARRAY(
-                            SELECT upwork_freelancer_portfolio_projects.vector <=> jobs.vector 
+                            SELECT (1 - (upwork_freelancer_portfolio_projects.vector <=> jobs.vector)) 
                             FROM upwork_freelancer_portfolio_projects 
                             WHERE upwork_freelancer_portfolio_projects.profile_id = (
                                 SELECT profile_id 
                                 FROM offers 
                                 WHERE offers.partner_id = p_id 
                                   AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))
-                                ORDER BY jobs.vector <=> offers.vector DESC 
+                                ORDER BY (1-(jobs.vector <=> offers.vector)) DESC 
                                 LIMIT 1
                             )
-                            ORDER BY upwork_freelancer_portfolio_projects.vector <=> jobs.vector DESC 
+                            ORDER BY (1-(upwork_freelancer_portfolio_projects.vector <=> jobs.vector)) DESC 
                             LIMIT 3
                         ) AS scores
                     ) subquery) +
-             0.2 * (SELECT partner_freelancer_profiles.vector <=> jobs.vector 
+             0.2 * (SELECT 1 - (partner_freelancer_profiles.vector <=> jobs.vector) 
                     FROM partner_freelancer_profiles 
                     WHERE partner_freelancer_profiles.id = (
                         SELECT profile_id 
                         FROM offers 
                         WHERE offers.partner_id = p_id 
                           AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))
-                        ORDER BY jobs.vector <=> offers.vector DESC 
+                        ORDER BY (1-(jobs.vector <=> offers.vector)) DESC 
                         LIMIT 1
                     )
                    )
@@ -84,50 +122,42 @@ BEGIN
     FROM upwork.jobs
     WHERE jobs.publish_time BETWEEN p_start_date AND p_end_date
     AND FLOOR(
-            (0.5 * (SELECT MAX(jobs.vector <=> offers.vector) 
+            (0.5 * (SELECT MAX(1 - (jobs.vector <=> offers.vector)) 
                     FROM offers 
                     WHERE offers.partner_id = p_id
                       AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))) +
-             0.3 * (SELECT COALESCE(0.5 * scores[1] + 0.3 * scores[2] + 0.2 * scores[3], 0) 
+             0.3 * (SELECT COALESCE(1 - (0.5 * scores[1] + 0.3 * scores[2] + 0.2 * scores[3]), 0) 
                     FROM (
                         SELECT ARRAY(
-                            SELECT upwork_freelancer_portfolio_projects.vector <=> jobs.vector 
+                            SELECT 1 - (upwork_freelancer_portfolio_projects.vector <=> jobs.vector) 
                             FROM upwork_freelancer_portfolio_projects 
                             WHERE upwork_freelancer_portfolio_projects.profile_id = (
                                 SELECT profile_id 
                                 FROM offers 
                                 WHERE offers.partner_id = p_id 
                                   AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))
-                                ORDER BY jobs.vector <=> offers.vector DESC 
+                                ORDER BY (1-(jobs.vector <=> offers.vector)) DESC 
                                 LIMIT 1
                             )
-                            ORDER BY upwork_freelancer_portfolio_projects.vector <=> jobs.vector DESC 
+                            ORDER BY (1-(upwork_freelancer_portfolio_projects.vector <=> jobs.vector)) DESC 
                             LIMIT 3
                         ) AS scores
                     ) subquery) +
-             0.2 * (SELECT partner_freelancer_profiles.vector <=> jobs.vector 
+             0.2 * (SELECT 1 - (partner_freelancer_profiles.vector <=> jobs.vector) 
                     FROM partner_freelancer_profiles 
                     WHERE partner_freelancer_profiles.id = (
                         SELECT profile_id 
                         FROM offers 
                         WHERE offers.partner_id = p_id 
                           AND (p_offer_ids IS NULL OR ARRAY_LENGTH(p_offer_ids, 1) = 0 OR offers.id = ANY(p_offer_ids))
-                        ORDER BY jobs.vector <=> offers.vector DESC 
+                        ORDER BY (1-(jobs.vector <=> offers.vector)) DESC 
                         LIMIT 1
                     )
                    )
             ) * 100
         ) BETWEEN p_scoring_value_from AND p_scoring_value_to
-    AND (
-  p_title_start = '' OR 
-  NOT EXISTS (
-    SELECT 1
-    FROM unnest(string_to_array(p_title_start, ' ')) AS word
-    WHERE jobs.title NOT ILIKE '%' || word || '%'
-  )
-)
     ORDER BY jobs.publish_time DESC
-    limit 50
+    LIMIT 50
     OFFSET p_offset;
 END;
 $$ LANGUAGE plpgsql;
