@@ -265,3 +265,105 @@ EXCEPTION
         RAISE;
 END;
 
+
+
+
+ -- 4 tables
+DECLARE
+    freelancer_updated INT := 0;
+    profiles_updated INT := 0;
+    portfolio_projects_updated INT := 0;
+    offers_updated INT := 0;
+    completed_projects_updated INT := 0;
+    certificates_updated INT := 0;
+BEGIN
+    IF user_email != auth.jwt() ->> 'email' THEN
+        RAISE EXCEPTION 'User email does not match current user';
+    END IF;
+
+    -- Update freelancer
+    UPDATE partner_freelancers
+    SET
+        deleted_at = NOW(),
+        deleted_by = user_email
+    WHERE id = target_id
+        AND deleted_at IS NULL;
+    GET DIAGNOSTICS freelancer_updated = ROW_COUNT;
+
+    IF freelancer_updated > 0 THEN
+        -- Update certificates directly using the freelancer_id
+        UPDATE partner_freelancer_certificates
+        SET
+            deleted_at = NOW(),
+            deleted_by = user_email
+        WHERE freelancer_id = target_id
+            AND deleted_at IS NULL;
+        GET DIAGNOSTICS certificates_updated = ROW_COUNT;
+
+        WITH updated_profiles AS (
+            UPDATE partner_freelancer_profiles AS pfp
+            SET
+                deleted_at = NOW(),
+                deleted_by = user_email
+            WHERE pfp.freelancer_id = target_id
+                AND pfp.deleted_at IS NULL
+            RETURNING pfp.id
+        ),
+        updated_portfolio AS (
+            UPDATE upwork_freelancer_portfolio_projects AS ufpp
+            SET
+                deleted_at = NOW(),
+                deleted_by = user_email
+            FROM updated_profiles up
+            WHERE ufpp.profile_id = up.id
+                AND ufpp.deleted_at IS NULL
+            RETURNING 1
+        ),
+        updated_offers AS (
+            UPDATE offers o
+            SET
+                deleted_at = NOW(),
+                deleted_by = user_email
+            FROM updated_profiles up
+            WHERE o.profile_id = up.id
+                AND o.deleted_at IS NULL
+            RETURNING 1
+        ),
+        updated_completed AS (
+            UPDATE upwork_freelancer_completed_projects ufcp
+            SET
+                deleted_at = NOW(),
+                deleted_by = user_email
+            FROM updated_profiles up
+            WHERE ufcp.profile_id = up.id
+                AND ufcp.deleted_at IS NULL
+            RETURNING 1
+        )
+        SELECT
+            (SELECT COUNT(*) FROM updated_profiles),
+            (SELECT COUNT(*) FROM updated_portfolio),
+            (SELECT COUNT(*) FROM updated_offers),
+            (SELECT COUNT(*) FROM updated_completed)
+        INTO
+            profiles_updated,
+            portfolio_projects_updated,
+            offers_updated,
+            completed_projects_updated;
+    ELSE
+        RAISE EXCEPTION 'Freelancer not found or already deleted';
+    END IF;
+
+    RETURN jsonb_build_object(
+        'freelancer_updated', freelancer_updated > 0,
+        'profiles_updated', profiles_updated,
+        'portfolio_projects_updated', portfolio_projects_updated,
+        'offers_updated', offers_updated,
+        'completed_projects_updated', completed_projects_updated,
+        'certificates_updated', certificates_updated
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE;
+END;
+
+
